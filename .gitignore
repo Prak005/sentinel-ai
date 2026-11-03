@@ -1,0 +1,21 @@
+# Python environments and caches
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Local secrets and environment files
+.env
+.env.*
+!.env.example
+
+# Local uploads, exports, and logs
+uploads/
+*.log
+sentinel_ai_analysis.csv
+
+# Editor / OS files
+.vscode/
+.idea/
+.DS_Store
