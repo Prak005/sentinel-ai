@@ -1,0 +1,94 @@
+
+SENTINEL AI - CIC-IDS2017 EVALUATION REPORT
+
+Total test records: 564,743
+
+RANDOM FOREST
+Accuracy: 0.9960
+Weighted Precision: 0.9981
+Weighted Recall: 0.9960
+Weighted F1: 0.9968
+Macro F1: 0.8140
+
+Classification Report:
+                            precision    recall  f1-score   support
+
+                    BENIGN     0.9997    0.9957    0.9977    454472
+                       Bot     0.2066    0.9517    0.3395       393
+                      DDoS     0.9999    0.9993    0.9996     25604
+             DoS GoldenEye     0.9956    0.9942    0.9949      2059
+                  DoS Hulk     0.9912    0.9997    0.9954     45170
+          DoS Slowhttptest     0.9908    0.9800    0.9854      1100
+             DoS slowloris     0.9956    0.9845    0.9900      1159
+               FTP-Patator     1.0000    0.9987    0.9994      1588
+                Heartbleed     0.6667    1.0000    0.8000         2
+              Infiltration     0.8000    0.5714    0.6667         7
+                  PortScan     0.9972    0.9993    0.9983     31575
+               SSH-Patator     1.0000    0.9941    0.9970      1179
+  Web Attack � Brute Force     0.8750    0.4651    0.6074       301
+Web Attack � Sql Injection     0.5000    0.2500    0.3333         4
+          Web Attack � XSS     0.3705    0.7923    0.5049       130
+
+                  accuracy                         0.9960    564743
+                 macro avg     0.8259    0.8651    0.8140    564743
+              weighted avg     0.9981    0.9960    0.9968    564743
+
+
+Confusion Matrix:
+[[452520   1436      2      3    388      4      1      0      1      1
+      89      0      0      0     27]
+ [    19    374      0      0      0      0      0      0      0      0
+       0      0      0      0      0]
+ [    18      0  25586      0      0      0      0      0      0      0
+       0      0      0      0      0]
+ [     4      0      0   2047      4      4      0      0      0      0
+       0      0      0      0      0]
+ [    10      0      0      3  45157      0      0      0      0      0
+       0      0      0      0      0]
+ [    18      0      0      0      0   1078      4      0      0      0
+       0      0      0      0      0]
+ [    15      0      0      0      0      2   1141      0      0      0
+       0      0      0      1      0]
+ [     2      0      0      0      0      0      0   1586      0      0
+       0      0      0      0      0]
+ [     0      0      0      0      0      0      0      0      2      0
+       0      0      0      0      0]
+ [     3      0      0      0      0      0      0      0      0      4
+       0      0      0      0      0]
+ [    10      0      0      0      8      0      0      0      0      0
+   31554      0      0      0      3]
+ [     7      0      0      0      0      0      0      0      0      0
+       0   1172      0      0      0]
+ [    16      0      0      0      0      0      0      0      0      0
+       0      0    140      0    145]
+ [     2      0      0      1      0      0      0      0      0      0
+       0      0      0      1      0]
+ [     5      0      0      2      0      0      0      0      0      0
+       0      0     20      0    103]]
+
+ISOLATION FOREST
+Accuracy: 0.8201
+Precision: 0.5515
+Recall: 0.4199
+F1: 0.4768
+False Positive Rate: 0.0828
+
+Confusion Matrix:
+[[416820  37652]
+ [ 63965  46306]]
+
+HYBRID DETECTION
+Accuracy: 0.9297
+Precision: 0.7356
+Recall: 0.9990
+F1: 0.8473
+False Positive Rate: 0.0871
+
+Confusion Matrix:
+[[414873  39599]
+ [   115 110156]]
+
+HYBRID STATUS DISTRIBUTION
+Known attacks: 112094
+Suspicious anomalies: 37661
+Normal traffic: 414988

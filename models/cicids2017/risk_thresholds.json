@@ -1,0 +1,11 @@
+{
+    "high_risk_max_score": -0.1606077505020301,
+    "medium_risk_max_score": -0.055069240336463744,
+    "anomaly_boundary": 0.0,
+    "high_risk_benign_percentile": 1,
+    "medium_risk_benign_percentile": 5,
+    "calibration_records": 181789,
+    "calibration_source": "BENIGN validation.csv records",
+    "dataset": "CIC-IDS2017",
+    "risk_policy": "Lower Isolation Forest decision_function score indicates more unusual traffic."
+}
