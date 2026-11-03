@@ -38,3 +38,13 @@ def test_does_not_apply_a_second_smaller_upload_size_limit():
     uploaded.size = 200 * 1024 * 1024
     frame = read_traffic_csv(uploaded)
     assert frame.iloc[0, 0] == 1
+
+
+def test_model_feature_columns_are_parsed_as_float32(monkeypatch):
+    import src.csv_io as csv_io
+
+    monkeypatch.setattr(csv_io, "_model_feature_columns", lambda: ("f1",))
+    frame = read_traffic_csv(Upload(b"f1,f2\n1.25,2\n3.5,4\n"))
+
+    assert str(frame["f1"].dtype) == "float32"
+    assert frame.iloc[0]["f1"] == pytest.approx(1.25)

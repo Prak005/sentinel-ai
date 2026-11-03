@@ -129,3 +129,44 @@ def test_load_models_caches_loaded_artifacts(monkeypatch, tmp_path):
         assert len(calls) == 3
     finally:
         inference.load_models.cache_clear()
+
+
+def test_predict_traffic_processes_rows_in_bounded_batches(monkeypatch):
+    class BatchRandomForest(FakeRandomForest):
+        def __init__(self):
+            super().__init__([])
+            self.max_batch = 0
+
+        def predict(self, values):
+            self.max_batch = max(self.max_batch, len(values))
+            return np.where(values[:, 0] >= 4, "DoS", "BENIGN")
+
+    class BatchIsolationForest(FakeIsolationForest):
+        def __init__(self):
+            super().__init__([], [])
+            self.max_batch = 0
+
+        def predict(self, values):
+            self.max_batch = max(self.max_batch, len(values))
+            return np.where(values[:, 0] >= 3, -1, 1)
+
+        def decision_function(self, values):
+            return values[:, 0] / 10.0 - 0.5
+
+    rf = BatchRandomForest()
+    isolation = BatchIsolationForest()
+    monkeypatch.setattr(
+        inference,
+        "load_models",
+        lambda: (rf, isolation, FakeImputer(), FakeImputer(), ["f1", "f2"], -0.4, 0.0),
+    )
+
+    frame = pd.DataFrame({"f1": [1, 2, 3, 4, 5], "f2": [0, 0, 0, 0, 0]})
+    result = inference.predict_traffic(frame, batch_size=2)
+
+    assert len(result) == 5
+    assert rf.max_batch <= 2
+    assert isolation.max_batch <= 2
+    assert result["Final Status"].tolist() == [
+        "Normal", "Normal", "Suspicious Anomaly", "Known Attack", "Known Attack"
+    ]

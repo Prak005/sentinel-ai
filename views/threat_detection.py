@@ -257,17 +257,10 @@ def render_page():
 
     else:
 
-        # Filter known attacks
-
-        known_attacks_df = analysis_df[
-            analysis_df["Final Status"] == "Known Attack"
-        ].copy()
-
-        # Assign risk level for known attacks
-
-        known_attacks_df["Risk Level"] = "HIGH RISK"
-
-        total_attacks = len(known_attacks_df)
+        # Keep a boolean mask instead of copying every known-attack row.
+        known_attack_mask = analysis_df["Final Status"] == "Known Attack"
+        attack_predictions = analysis_df.loc[known_attack_mask, "RF Prediction"]
+        total_attacks = int(known_attack_mask.sum())
 
         if total_attacks == 0:
 
@@ -284,15 +277,15 @@ def render_page():
 
             # Attack statistics
 
-            attack_counts = (
-                known_attacks_df["RF Prediction"]
-                .value_counts()
-            )
+            attack_counts = attack_predictions.value_counts()
 
             unique_attacks = len(attack_counts)
 
             also_flagged = int(
-                (known_attacks_df["IF Prediction"] == "Anomaly").sum()
+                (
+                    known_attack_mask
+                    & (analysis_df["IF Prediction"] == "Anomaly")
+                ).sum()
             )
 
             # Threat summary
@@ -466,13 +459,8 @@ def render_page():
                 </div>
                 """, unsafe_allow_html=True)
 
-                attack_options = [
-                    "All Attack Types"
-                ] + sorted(
-                    known_attacks_df["RF Prediction"]
-                    .astype(str)
-                    .unique()
-                    .tolist()
+                attack_options = ["All Attack Types"] + sorted(
+                    attack_predictions.astype(str).unique().tolist()
                 )
 
                 selected_attack = st.selectbox(
@@ -481,15 +469,15 @@ def render_page():
                 )
 
                 if selected_attack == "All Attack Types":
-
-                    filtered_attacks = known_attacks_df
-
+                    selected_attack_mask = known_attack_mask
                 else:
+                    selected_attack_mask = (
+                        known_attack_mask
+                        & (analysis_df["RF Prediction"] == selected_attack)
+                    )
 
-                    filtered_attacks = known_attacks_df[
-                        known_attacks_df["RF Prediction"].astype(str)
-                        == selected_attack
-                    ]
+                filtered_attack_count = int(selected_attack_mask.sum())
+                filtered_attacks = analysis_df.loc[selected_attack_mask]
 
                 st.markdown(
                     f"""
@@ -515,7 +503,7 @@ def render_page():
 
                 st.download_button(
                     "⬇️ Download Threat Report",
-                    data=filtered_attacks.to_csv(index=False).encode("utf-8"),
+                    data=lambda: filtered_attacks.to_csv(index=False).encode("utf-8"),
                     file_name="sentinel_ai_threat_report.csv",
                     mime="text/csv",
                     use_container_width=True

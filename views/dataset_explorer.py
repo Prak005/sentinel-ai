@@ -262,6 +262,29 @@ def metric_card(label, value, note, accent):
     )
 
 
+
+
+def count_duplicate_rows_chunked(frame, columns, chunk_size=10000):
+    """Count repeated rows using bounded-size row-hash batches."""
+    seen_hashes = set()
+    duplicate_count = 0
+
+    for start in range(0, len(frame), chunk_size):
+        chunk = frame.iloc[start:start + chunk_size].loc[:, columns]
+        row_hashes = pd.util.hash_pandas_object(
+            chunk, index=False, categorize=True
+        ).to_numpy(copy=False)
+
+        for row_hash in row_hashes:
+            value = int(row_hash)
+            if value in seen_hashes:
+                duplicate_count += 1
+            else:
+                seen_hashes.add(value)
+
+    return duplicate_count
+
+
 def render_distribution_chart(labels, values, title):
 
     chart_height = max(340, min(620, len(labels) * 36 + 110))
@@ -352,27 +375,25 @@ def render_page():
 
     else:
 
-        # Remove model output columns to show the original dataset
+        # Keep references to the source columns instead of copying the entire
+        # analyzed DataFrame (which can be hundreds of MB for large uploads).
+        prediction_columns = {
+            "RF Prediction", "IF Prediction", "Anomaly Score",
+            "Final Status", "Risk Level"
+        }
+        dataset_columns = [
+            column for column in analysis_df.columns
+            if column not in prediction_columns
+        ]
 
-        dataset_df = analysis_df.drop(
-            columns=[
-                "RF Prediction",
-                "IF Prediction",
-                "Anomaly Score",
-                "Final Status"
-            ],
-            errors="ignore"
-        ).copy()
-
-        total_records = len(dataset_df)
-
-        total_features = len([
-            col for col in dataset_df.columns if col != "Label"
-        ])
-
-        missing_values = int(dataset_df.isna().sum().sum())
-
-        duplicate_records = int(dataset_df.duplicated().sum())
+        total_records = len(analysis_df)
+        total_features = sum(column != "Label" for column in dataset_columns)
+        missing_values = sum(
+            int(analysis_df[column].isna().sum()) for column in dataset_columns
+        )
+        duplicate_records = count_duplicate_rows_chunked(
+            analysis_df, dataset_columns
+        )
 
         # Dataset overview
 
@@ -446,7 +467,7 @@ def render_page():
             )
 
             st.dataframe(
-                dataset_df.head(100),
+                analysis_df.iloc[:100].loc[:, dataset_columns],
                 use_container_width=True
             )
 
@@ -469,10 +490,14 @@ def render_page():
         )
 
         schema_df = pd.DataFrame({
-            "Column": dataset_df.columns.astype(str),
-            "Data Type": [str(dtype) for dtype in dataset_df.dtypes],
-            "Missing Values": dataset_df.isna().sum().values,
-            "Unique Values": dataset_df.nunique().values
+            "Column": [str(column) for column in dataset_columns],
+            "Data Type": [str(analysis_df[column].dtype) for column in dataset_columns],
+            "Missing Values": [
+                int(analysis_df[column].isna().sum()) for column in dataset_columns
+            ],
+            "Unique Values": [
+                int(analysis_df[column].nunique()) for column in dataset_columns
+            ]
         })
 
         with st.container(border=True):
@@ -504,10 +529,10 @@ def render_page():
             unsafe_allow_html=True
         )
 
-        if "Label" in dataset_df.columns:
+        if "Label" in dataset_columns:
 
             label_counts = (
-                dataset_df["Label"]
+                analysis_df["Label"]
                 .astype("string")
                 .fillna("Missing")
                 .value_counts()
@@ -550,7 +575,7 @@ def render_page():
         )
 
         feature_columns = [
-            col for col in dataset_df.columns if col != "Label"
+            col for col in dataset_columns if col != "Label"
         ]
 
         if feature_columns:
@@ -561,7 +586,7 @@ def render_page():
                 key="dataset_feature_select"
             )
 
-            selected_data = dataset_df[selected_feature]
+            selected_data = analysis_df[selected_feature]
 
             st.markdown(
                 f'<div class="de-feature-info">'

@@ -488,17 +488,43 @@ def render_page():
         if uploaded_file is not None:
 
             try:
-                df = read_traffic_csv(uploaded_file)
-
+                # Hash the existing upload buffer without creating another
+                # 75-200 MB bytes object via getvalue().
                 file_digest = hashlib.sha256(
-                    uploaded_file.getvalue()
+                    uploaded_file.getbuffer()
                 ).hexdigest()
+                uploaded_file.seek(0)
 
                 current_file = (
                     uploaded_file.name,
                     uploaded_file.size,
                     file_digest
                 )
+
+                cached_file = st.session_state.get("sentinel_upload_file")
+
+                if cached_file == current_file:
+                    # Reuse the DataFrame across Streamlit reruns. Re-reading
+                    # the CSV while the previous analysis remains in session
+                    # state would temporarily double its memory footprint.
+                    df = st.session_state.get("sentinel_analysis_df")
+                    if df is None:
+                        df = st.session_state.get("sentinel_upload_df")
+                else:
+                    # Release the previous dataset before parsing a new upload.
+                    for key in (
+                        "sentinel_analysis_df",
+                        "sentinel_analysis_file",
+                        "sentinel_upload_df",
+                        "sentinel_upload_file",
+                    ):
+                        st.session_state.pop(key, None)
+                    df = None
+
+                if df is None:
+                    df = read_traffic_csv(uploaded_file)
+                    st.session_state["sentinel_upload_df"] = df
+                    st.session_state["sentinel_upload_file"] = current_file
 
                 # FILE INFORMATION
                 st.markdown(
@@ -537,10 +563,21 @@ def render_page():
                         "#58d8cf"
                     )
 
+                raw_columns = [
+                    column for column in df.columns
+                    if column not in {
+                        "RF Prediction", "IF Prediction", "Anomaly Score",
+                        "Final Status", "Risk Level"
+                    }
+                ]
+                missing_value_count = sum(
+                    int(df[column].isna().sum()) for column in raw_columns
+                )
+
                 with b:
                     metric_card(
                         "TOTAL FEATURES",
-                        len(df.columns),
+                        len(raw_columns),
                         "Available dataset columns",
                         "#69b9ef"
                     )
@@ -548,7 +585,7 @@ def render_page():
                 with c:
                     metric_card(
                         "MISSING VALUES",
-                        int(df.isna().sum().sum()),
+                        missing_value_count,
                         "Empty data cells",
                         "#f4b95f"
                     )
@@ -564,7 +601,7 @@ def render_page():
                 with st.container(border=True):
 
                     st.dataframe(
-                        df.head(20),
+                        df.iloc[:20].loc[:, raw_columns],
                         use_container_width=True,
                         hide_index=True
                     )
@@ -600,23 +637,17 @@ def render_page():
 
                             results = predict_traffic(df)
 
-                            # Combine original data with predictions
-                            analysis_df = pd.concat(
-                                [
-                                    df.reset_index(drop=True),
-                                    results.reset_index(drop=True)
-                                ],
-                                axis=1
-                            )
+                            # Attach prediction columns to the existing frame
+                            # rather than concatenating and copying the full
+                            # 75-200 MB source dataset.
+                            for column in results.columns:
+                                df[column] = results[column].to_numpy(copy=False)
 
-                            # Save results in session state
-                            st.session_state[
-                                "sentinel_analysis_df"
-                            ] = analysis_df
+                            del results
 
-                            st.session_state[
-                                "sentinel_analysis_file"
-                            ] = current_file
+                            st.session_state["sentinel_analysis_df"] = df
+                            st.session_state["sentinel_analysis_file"] = current_file
+                            st.session_state.pop("sentinel_upload_df", None)
 
                         st.success(
                             "Traffic analysis completed successfully!"
@@ -930,14 +961,9 @@ def render_page():
                             "Download the complete traffic analysis with all original features and prediction columns."
                         )
 
-                        # Download complete results
-                        csv_data = analysis_df.to_csv(
-                            index=False
-                        ).encode("utf-8")
-
                         st.download_button(
                             label="⬇️  DOWNLOAD COMPLETE ANALYSIS REPORT",
-                            data=csv_data,
+                            data=lambda: analysis_df.to_csv(index=False).encode("utf-8"),
                             file_name="sentinel_ai_analysis.csv",
                             mime="text/csv",
                             use_container_width=True

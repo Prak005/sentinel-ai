@@ -311,30 +311,19 @@ def render_page():
 
     else:
 
-        # Isolation Forest flagged records
+        # Keep compact boolean masks for summary statistics. Materialize
+        # filtered DataFrames only when the user reaches the report section.
+        anomaly_mask = analysis_df["IF Prediction"] == "Anomaly"
+        suspicious_mask = analysis_df["Final Status"] == "Suspicious Anomaly"
+        known_attack_anomalies_mask = (
+            anomaly_mask & (analysis_df["Final Status"] == "Known Attack")
+        )
+        normal_mask = analysis_df["IF Prediction"] == "Normal"
 
-        anomaly_df = analysis_df[
-            analysis_df["IF Prediction"] == "Anomaly"
-        ].copy()
-
-        # Hybrid suspicious anomalies
-
-        suspicious_df = analysis_df[
-            analysis_df["Final Status"] == "Suspicious Anomaly"
-        ].copy()
-
-        # Known attacks also flagged by Isolation Forest
-
-        known_attack_anomalies = analysis_df[
-            (analysis_df["IF Prediction"] == "Anomaly")
-            & (analysis_df["Final Status"] == "Known Attack")
-        ]
-
-        # Normal records according to Isolation Forest
-
-        normal_df = analysis_df[
-            analysis_df["IF Prediction"] == "Normal"
-        ].copy()
+        anomaly_count = int(anomaly_mask.sum())
+        suspicious_count = int(suspicious_mask.sum())
+        known_attack_anomaly_count = int(known_attack_anomalies_mask.sum())
+        normal_count = int(normal_mask.sum())
 
         # Anomaly summary
 
@@ -354,7 +343,7 @@ def render_page():
             st.markdown(
                 metric_card(
                     "IF Flagged Flows",
-                    f"{len(anomaly_df):,}",
+                    f"{anomaly_count:,}",
                     "Total records flagged as anomalous",
                     "#FF7777"
                 ),
@@ -365,7 +354,7 @@ def render_page():
             st.markdown(
                 metric_card(
                     "Suspicious Anomalies",
-                    f"{len(suspicious_df):,}",
+                    f"{suspicious_count:,}",
                     "Hybrid detection classified as suspicious",
                     "#FFB86B"
                 ),
@@ -376,7 +365,7 @@ def render_page():
             st.markdown(
                 metric_card(
                     "Known Attacks Also Flagged",
-                    f"{len(known_attack_anomalies):,}",
+                    f"{known_attack_anomaly_count:,}",
                     "Known attacks also flagged by IF",
                     "#FF7777"
                 ),
@@ -387,7 +376,7 @@ def render_page():
             st.markdown(
                 metric_card(
                     "IF Normal Flows",
-                    f"{len(normal_df):,}",
+                    f"{normal_count:,}",
                     "Records classified as normal by IF",
                     "#45D6C2"
                 ),
@@ -414,21 +403,17 @@ def render_page():
                 </div>
                 """, unsafe_allow_html=True)
 
-                score_df = analysis_df.copy()
+                # The inference pipeline already stores numeric anomaly
+                # scores. Avoid copying the complete analyzed dataset just
+                # to build the two histogram series.
+                score_series = analysis_df["Anomaly Score"]
 
-                score_df["Anomaly Score"] = pd.to_numeric(
-                    score_df["Anomaly Score"],
-                    errors="coerce"
-                )
-
-                normal_scores = score_df.loc[
-                    score_df["IF Prediction"] == "Normal",
-                    "Anomaly Score"
+                normal_scores = score_series.loc[
+                    analysis_df["IF Prediction"] == "Normal"
                 ].dropna()
 
-                anomaly_scores = score_df.loc[
-                    score_df["IF Prediction"] == "Anomaly",
-                    "Anomaly Score"
+                anomaly_scores = score_series.loc[
+                    analysis_df["IF Prediction"] == "Anomaly"
                 ].dropna()
 
                 fig = go.Figure()
@@ -520,7 +505,7 @@ def render_page():
                     unsafe_allow_html=True
                 )
 
-                score_values = score_df["Anomaly Score"].dropna()
+                score_values = score_series.dropna()
 
                 if not score_values.empty:
 
@@ -548,7 +533,7 @@ def render_page():
             </div>
             """, unsafe_allow_html=True)
 
-            if anomaly_df.empty:
+            if anomaly_count == 0:
 
                 st.success(
                     "No anomalous traffic was flagged in the latest analysis."
@@ -556,12 +541,8 @@ def render_page():
 
             else:
 
-                anomaly_df["Anomaly Score"] = pd.to_numeric(
-                    anomaly_df["Anomaly Score"],
-                    errors="coerce"
-                )
-
-                anomaly_df = anomaly_df.sort_values(
+                # Create the report subset only at the point it is needed.
+                anomaly_df = analysis_df.loc[anomaly_mask].sort_values(
                     "Anomaly Score",
                     ascending=True
                 )
@@ -590,7 +571,7 @@ def render_page():
 
                 st.download_button(
                     "⬇️ Download Anomaly Report",
-                    data=anomaly_df.to_csv(index=False).encode("utf-8"),
+                    data=lambda: anomaly_df.to_csv(index=False).encode("utf-8"),
                     file_name="sentinel_ai_anomaly_report.csv",
                     mime="text/csv",
                     use_container_width=True

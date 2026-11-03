@@ -1,109 +1,81 @@
-
+"""Memory-conscious hybrid traffic inference using the trained SentinelAI models."""
 from pathlib import Path
 from functools import lru_cache
 import json
+import gc
+
 import joblib
 import numpy as np
 import pandas as pd
 
-
-# --------------------------------------------------
-# 1. MODEL PATHS
-# --------------------------------------------------
-
 BASE_DIR = Path(__file__).resolve().parents[1]
-
 MODEL_DIR = BASE_DIR / "models" / "cicids2017"
+DEFAULT_BATCH_SIZE = 2048
 
-
-# --------------------------------------------------
-# 2. LOAD TRAINED MODELS AND RISK THRESHOLDS
-# --------------------------------------------------
 
 @lru_cache(maxsize=1)
 def load_models():
-    """Load runtime model artifacts once per process.
-
-    The trained artifacts and prediction rules are unchanged. Clear the cache
-    with ``load_models.cache_clear()`` after replacing model files.
-    """
-
+    """Load runtime model artifacts once per process."""
     rf_path = MODEL_DIR / "random_forest.pkl"
     if_path = MODEL_DIR / "isolation_forest.pkl"
     prep_path = MODEL_DIR / "preprocessor_bundle.pkl"
     risk_path = MODEL_DIR / "risk_thresholds.json"
 
-    required_files = [
-        rf_path,
-        if_path,
-        prep_path,
-        risk_path
-    ]
-
-    for path in required_files:
-
+    for path in (rf_path, if_path, prep_path, risk_path):
         if not path.exists():
-            raise FileNotFoundError(
-                f"Required file not found: {path}"
-            )
+            raise FileNotFoundError(f"Required file not found: {path}")
 
-    # Load trained models
     rf_model = joblib.load(rf_path)
     if_model = joblib.load(if_path)
-
-    # Load preprocessing bundle
     bundle = joblib.load(prep_path)
 
-    # Load calibrated risk thresholds
     with open(risk_path, "r", encoding="utf-8") as file:
         thresholds = json.load(file)
 
-    # Extract thresholds
-    high_threshold = float(
-        thresholds["high_risk_max_score"]
-    )
+    high_threshold = float(thresholds["high_risk_max_score"])
+    medium_threshold = float(thresholds["medium_risk_max_score"])
 
-    medium_threshold = float(
-        thresholds["medium_risk_max_score"]
-    )
-
-    # Validate threshold configuration
     if not np.isfinite(high_threshold) or not np.isfinite(medium_threshold):
         raise ValueError("Invalid risk threshold values.")
-
     if high_threshold > medium_threshold:
-        raise ValueError(
-            "High risk threshold must be lower than medium risk threshold."
-        )
+        raise ValueError("High risk threshold must be lower than medium risk threshold.")
 
-    # Configure prediction
+    # Keep estimator parallelism disabled on small-memory hosting instances.
     rf_model.set_params(n_jobs=1, verbose=0)
     if_model.set_params(n_jobs=1)
-
-    rf_imputer = bundle["rf_imputer"]
-    if_imputer = bundle["if_imputer"]
-
-    feature_columns = bundle["feature_columns"]
 
     return (
         rf_model,
         if_model,
-        rf_imputer,
-        if_imputer,
-        feature_columns,
+        bundle["rf_imputer"],
+        bundle["if_imputer"],
+        list(bundle["feature_columns"]),
         high_threshold,
-        medium_threshold
+        medium_threshold,
     )
 
 
-# --------------------------------------------------
-# 3. TRAFFIC PREDICTION
-# --------------------------------------------------
+def _normalize_headers_in_place(df: pd.DataFrame) -> None:
+    normalized = (
+        df.columns.astype(str)
+        .str.replace("\ufeff", "", regex=False)
+        .str.strip()
+    )
+    if normalized.duplicated().any():
+        raise ValueError("Duplicate columns found after removing spaces.")
+    df.columns = normalized
 
-def predict_traffic(df):
 
+def predict_traffic(df: pd.DataFrame, batch_size: int = DEFAULT_BATCH_SIZE) -> pd.DataFrame:
+    """Predict in small batches to cap peak memory while preserving model rules.
+
+    Only one feature batch and one transformed model matrix are kept at a time.
+    The original input DataFrame is not copied or modified.
+    """
     if df.empty:
         raise ValueError("Uploaded dataset is empty.")
+    if not isinstance(batch_size, int) or batch_size < 1:
+        raise ValueError("batch_size must be a positive integer.")
 
     (
         rf_model,
@@ -112,144 +84,82 @@ def predict_traffic(df):
         if_imputer,
         feature_columns,
         high_threshold,
-        medium_threshold
+        medium_threshold,
     ) = load_models()
 
-    X = df.copy()
+    # Normalize the caller's headers in place (no full-frame copy).
+    _normalize_headers_in_place(df)
 
-    # Normalize column names
-    X.columns = (
-        X.columns.astype(str)
-        .str.replace("\ufeff", "", regex=False)
-        .str.strip()
-    )
-
-    if X.columns.duplicated().any():
-        raise ValueError(
-            "Duplicate columns found after removing spaces."
-        )
-
-    # Remove labels and internal grouping metadata
-    X = X.drop(
-        columns=["Label", "Group_ID"],
-        errors="ignore"
-    )
-
-    # Check required features
-    missing_columns = [
-        col for col in feature_columns
-        if col not in X.columns
-    ]
-
+    missing_columns = [column for column in feature_columns if column not in df.columns]
     if missing_columns:
-        raise ValueError(
-            f"Missing required columns: {missing_columns}"
-        )
+        raise ValueError(f"Missing required columns: {missing_columns}")
 
-    # Keep only the 78 training features
-    X = X.loc[:, feature_columns].copy()
+    row_count = len(df)
+    rf_parts = []
+    if_parts = []
+    score_parts = []
 
-    # Convert all features to numeric
-    for column in feature_columns:
+    for start in range(0, row_count, batch_size):
+        stop = min(start + batch_size, row_count)
 
-        X[column] = pd.to_numeric(
-            X[column],
-            errors="coerce"
-        )
+        # Select only model features for this batch. Numeric coercion and
+        # infinity handling are bounded to this small slice.
+        feature_batch = df.iloc[start:stop].loc[:, feature_columns]
+        feature_batch = feature_batch.apply(pd.to_numeric, errors="coerce")
+        feature_batch.replace([np.inf, -np.inf], np.nan, inplace=True)
 
-    # Replace infinite values
-    X.replace(
-        [np.inf, -np.inf],
-        np.nan,
-        inplace=True
-    )
+        rf_values = rf_imputer.transform(feature_batch)
+        rf_parts.append(np.asarray(rf_model.predict(rf_values)))
+        del rf_values
 
-    # Separate preprocessing
-    X_rf = rf_imputer.transform(X)
-    X_if = if_imputer.transform(X)
+        if_values = if_imputer.transform(feature_batch)
+        if_predictions = np.asarray(if_model.predict(if_values))
+        anomaly_scores = np.asarray(if_model.decision_function(if_values), dtype=np.float64)
+        del if_values, feature_batch
 
-    # Random Forest predictions
-    rf_predictions = rf_model.predict(X_rf)
+        if not np.isfinite(anomaly_scores).all():
+            raise ValueError("Non-finite anomaly scores generated by Isolation Forest.")
 
-    # Isolation Forest predictions
-    if_predictions = if_model.predict(X_if)
+        if_parts.append(if_predictions)
+        score_parts.append(anomaly_scores)
 
-    # Raw anomaly scores
-    anomaly_scores = if_model.decision_function(X_if)
+    rf_predictions = np.concatenate(rf_parts)
+    if_predictions = np.concatenate(if_parts)
+    anomaly_scores = np.concatenate(score_parts)
 
-    if not np.isfinite(anomaly_scores).all():
-        raise ValueError(
-            "Non-finite anomaly scores generated by Isolation Forest."
-        )
-
-    # --------------------------------------------------
-    # 4. HYBRID DECISION + RISK CLASSIFICATION
-    # --------------------------------------------------
-
+    # Preserve the original hybrid decision and calibrated risk thresholds.
     final_status = []
     risk_levels = []
 
-    for rf_label, if_label, score in zip(
-        rf_predictions,
-        if_predictions,
-        anomaly_scores
-    ):
-
-        # Confirmed attack according to Random Forest
+    for rf_label, if_label, score in zip(rf_predictions, if_predictions, anomaly_scores):
         if rf_label != "BENIGN":
-
-            status = "Known Attack"
-            risk = "CONFIRMED ATTACK"
-
-        # Unusual traffic according to Isolation Forest
+            status, risk = "Known Attack", "CONFIRMED ATTACK"
         elif if_label == -1:
-
             status = "Suspicious Anomaly"
-
-            # Fixed validation-calibrated thresholds
             if score <= high_threshold:
-
                 risk = "HIGH RISK"
-
             elif score <= medium_threshold:
-
                 risk = "MEDIUM RISK"
-
             else:
-
                 risk = "LOW RISK"
-
-        # Both models indicate normal traffic
         else:
-
-            status = "Normal"
-            risk = "NORMAL"
+            status, risk = "Normal", "NORMAL"
 
         final_status.append(status)
         risk_levels.append(risk)
 
-    # --------------------------------------------------
-    # 5. RETURN RESULTS
-    # --------------------------------------------------
+    results = pd.DataFrame(
+        {
+            "RF Prediction": rf_predictions,
+            "IF Prediction": np.where(if_predictions == -1, "Anomaly", "Normal"),
+            "Anomaly Score": np.round(anomaly_scores, 6),
+            "Final Status": final_status,
+            "Risk Level": risk_levels,
+        },
+        index=df.index,
+    )
 
-    results = pd.DataFrame({
-
-        "RF Prediction": rf_predictions,
-
-        "IF Prediction": [
-            "Anomaly" if value == -1 else "Normal"
-            for value in if_predictions
-        ],
-
-        "Anomaly Score": np.round(
-            anomaly_scores,
-            6
-        ),
-
-        "Final Status": final_status,
-
-        "Risk Level": risk_levels
-
-    }, index=df.index)
-
+    # Release temporary arrays promptly on constrained hosts.
+    del rf_parts, if_parts, score_parts, rf_predictions, if_predictions, anomaly_scores
+    gc.collect()
     return results
