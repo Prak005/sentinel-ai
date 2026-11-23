@@ -1,6 +1,3 @@
-
-"""Offline model evaluation and architecture page."""
-
 from html import escape
 
 import streamlit as st

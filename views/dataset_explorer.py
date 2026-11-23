@@ -1,6 +1,3 @@
-
-"""Dataset exploration page for analyzed traffic data."""
-
 from html import escape
 
 import streamlit as st

@@ -1,5 +1,3 @@
-
-"""Sentinel AI Overview UI. Detection and inference logic remains unchanged."""
 import html
 import pandas as pd
 import plotly.graph_objects as go

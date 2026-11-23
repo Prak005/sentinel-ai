@@ -1,6 +1,3 @@
-
-"""Traffic Analyzer page for Sentinel AI."""
-
 import hashlib
 import logging
 from html import escape
@@ -15,10 +12,6 @@ from ui.components import page_header
 
 logger = logging.getLogger(__name__)
 
-
-# =========================================================
-# SENTINEL AI - TRAFFIC ANALYZER THEME
-# =========================================================
 
 TRAFFIC_CSS = r"""
 <style>
