@@ -1,4 +1,3 @@
-"""Reusable Streamlit presentation components."""
 import streamlit as st
 
 def metric_card(label, value, note, accent, icon):

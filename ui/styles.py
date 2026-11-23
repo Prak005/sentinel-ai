@@ -1,5 +1,3 @@
-"""Sentinel AI dashboard styling."""
-
 CUSTOM_CSS = r"""@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@500;600;700;800&family=Rajdhani:wght@500;600;700&display=swap');
 
 /* Main application */
