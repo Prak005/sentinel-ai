@@ -1,4 +1,3 @@
-"""Memory-conscious hybrid traffic inference using the trained SentinelAI models."""
 from pathlib import Path
 from functools import lru_cache
 import json
