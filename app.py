@@ -11,6 +11,9 @@ st.set_page_config(
 
 st.markdown(f"<style>{CUSTOM_CSS}</style>", unsafe_allow_html=True)
 
+if st.session_state.pop("sentinel_go_overview", False):
+    st.session_state["navigation"] = "Overview"
+
 with st.sidebar:
     # Brand header: visual-only component. Keep the title/subtitle here editable.
     st.markdown("""
@@ -48,7 +51,8 @@ with st.sidebar:
             "Model Performance",
             "Dataset Explorer"
         ],
-        label_visibility="collapsed"
+        label_visibility="collapsed",
+        key="navigation"
     )
 
     # CUSTOM FOOTER: Replace the placeholder title and text below with your own content.

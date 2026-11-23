@@ -641,6 +641,8 @@ def render_page():
                             st.session_state["sentinel_analysis_df"] = df
                             st.session_state["sentinel_analysis_file"] = current_file
                             st.session_state.pop("sentinel_upload_df", None)
+                            st.session_state["sentinel_go_overview"] = True
+                            st.rerun()
 
                         st.success(
                             "Traffic analysis completed successfully!"
