@@ -375,11 +375,11 @@ def render_page():
     )
 
     render_metric_cards([
-        ("Accuracy", "93.68%", "Overall correct predictions"),
-        ("Weighted Precision", "96.84%", "Precision weighted by class support"),
-        ("Weighted Recall", "95.68%", "Recall weighted by class support"),
-        ("Weighted F1", "95.74%", "Weighted harmonic mean"),
-        ("Macro F1", "81.34%", "Equal importance to each class")
+        ("Accuracy", "99.60%", "Overall correct predictions"),
+        ("Weighted Precision", "99.81%", "Precision weighted by class support"),
+        ("Weighted Recall", "99.60%", "Recall weighted by class support"),
+        ("Weighted F1", "99.68%", "Weighted harmonic mean"),
+        ("Macro F1", "81.40%", "Equal importance to each class")
     ])
 
     st.caption(
@@ -403,27 +403,27 @@ def render_page():
     comparison_df = pd.DataFrame([
         {
             "Model": "Random Forest",
-            "Accuracy": "93.68%",
-            "Precision": "96.84%",
-            "Recall": "95.68%",
-            "F1 Score": "95.74%",
+            "Accuracy": "99.60%",
+            "Precision": "99.81%",
+            "Recall": "99.60%",
+            "F1 Score": "99.68%",
             "False Positive Rate": "0.33%"
         },
         {
             "Model": "Isolation Forest",
-            "Accuracy": "82.88%",
-            "Precision": "58.21%",
-            "Recall": "43.65%",
-            "F1 Score": "49.89%",
-            "False Positive Rate": "7.60%"
+            "Accuracy": "82.01%",
+            "Precision": "55.15%",
+            "Recall": "41.99%",
+            "F1 Score": "47.68%",
+            "False Positive Rate": "8.28%"
         },
         {
             "Model": "Hybrid Detection",
-            "Accuracy": "93.60%",
-            "Precision": "75.35%",
-            "Recall": "95.89%",
-            "F1 Score": "85.90%",
-            "False Positive Rate": "7.93%"
+            "Accuracy": "92.97%",
+            "Precision": "73.56%",
+            "Recall": "99.90%",
+            "F1 Score": "84.73%",
+            "False Positive Rate": "8.71%"
         }
     ])
 
