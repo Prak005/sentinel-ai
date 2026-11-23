@@ -1,4 +1,3 @@
-"""Sentinel AI Streamlit application entry point."""
 import streamlit as st
 from ui.styles import CUSTOM_CSS
 from views import overview, traffic_analyzer, threat_detection, anomaly_monitor, model_performance, dataset_explorer
